@@ -1,0 +1,24 @@
+codes	categories	definition
+c	Cancer code, self-reported	(from biobank)
+nc	Non-cancer illness code, self-reported	(from biobank)
+d	Diagnoses - main ICD10	(from biobank)
+cd	Underlying (primary) cause of death	(from biobank)
+b	Lifestyle, behavior	Various questions on life history and lifestyle choices
+f	Fitness, activity	Questions on activity and exericse habits, some fitness measurements
+a	Anthropometry	Body size, weight, obesity measurements, some parameters obtained during exercise
+sd	Smoking, drinking	
+ps	Psychology, psychiatry	Symptoms of depression, suicide, anxiety, behavior disorders
+e	Intelligence, education	Cognitive performance measures, qualifications, work type
+ey	Eyesight	Eye diseases, glass usage
+p	Pain	
+vt	Vitamin and mineral supplements	
+ci	Cancer, ICD10	As reported in causes of death or ICD10 diagnoses
+h	Hearing	Reported hearing strength and ear disorders
+ia	Infections and parasites, ICD10	
+ii	Blood and cardiovascular diseases	ICD10 or self-reported
+ik	Teeth and digestive disorders	ICD10 or self-reported
+io	Reproductive health and childbirth	Reproductive diseases, fertility, general questions on pregnancy
+is	Fractures, external injuries	
+d0	Diagnoses, ICD10, not classified further	
+nc0	Illnesses, self-reported, not classified further	
+0	Various	
