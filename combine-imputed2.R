@@ -67,6 +67,21 @@ ukbbSum = left_join(ukbbSum, cats, by=c("pheno"="Phenotype.code"))
 
 write.table(ukbbSum, "ukbb_summarizedgrs.tsv", col.names=T, row.names=F, quote=F, sep="\t")
 
+### LOAD CLINVAR
+cv = read.table("clinvarsummary.txt", h=T, sep="\t", quote="", comment.char = "")
+cv = filter(cv, Chromosome %in% 1:22)
+cv$Chromosome = as.numeric(cv$Chromosome)
+cv = filter(cv, ReferenceAllele %in% c("A", "C", "G", "T"),
+			AlternateAllele %in% c("A", "C", "G", "T")) %>%
+	filter(Assembly=="GRCh37") %>%
+	filter(PhenotypeList!="not specified", PhenotypeList!="not provided",
+		   PhenotypeList!="not provided;not specified")
+# remove variants of no interesting consequences
+cv = filter(cv, ClinicalSignificance!="Uncertain significance",
+			!ClinicalSignificance %in% c("-", "not provided", "other"),
+			!grepl("^Benign", ClinicalSignificance),
+			!grepl("^Likely benign", ClinicalSignificance))
+
 ### PREP INDIVIDUAL FILES
 # find available vcfs
 files = data.frame(paths = list.files(pattern="^allchr"))
@@ -81,6 +96,19 @@ for(i in 1:nrow(files)){
 	# read each vcf
 	vcf = read.table(gzfile(files$paths[i]))
 	colnames(vcf) = c("CHR", "POS", "rsHRC", "REF", "ALT", "gt", "ds")
+	
+	# merge with clinvar
+	afs = group_by(ukbb2, CHR, POS, REF, ALT) %>%
+		summarize(af=min(af), AF_GLOBAL=min(AF_GLOBAL))
+	vcfc = inner_join(vcf, cv, by=c("CHR"="Chromosome", "POS"="Start",
+				"REF"="ReferenceAllele", "ALT"="AlternateAllele"))
+	vcfc = select(vcfc, -one_of(c("Type", "LastEvaluated", "nsv.esv..dbVar.", "Assembly",
+				"Cytogenetic", "NumberSubmitters", "Guidelines", "SubmitterCategories",
+				"RCVaccession", "ChromosomeAccession", "Stop")))
+	# drop frequent genotypes
+	vcfc = left_join(vcfc, afs, by=c("CHR", "POS", "REF", "ALT")) %>%
+		filter(!(gt=="0|0" & AF_GLOBAL<0.1) & !(gt=="1|1" & AF_GLOBAL>0.9))
+	write.table(vcfc, paste0("clinvar_", i, ".tsv"), quote=F, row.names=F, col.names=T, sep="\t")
 	
 	# merge with summaries and get GRSs
 	vcf = inner_join(vcf, ukbb, by=c("CHR", "POS", "REF", "ALT")) %>%

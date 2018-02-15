@@ -76,6 +76,9 @@ ui <- fluidPage(
 			tabPanel(value = "br", "Select in plot",
 					 h4("Selected points:"),
 					 DT::dataTableOutput("brushed")),
+			tabPanel(value = "cv", "Clinical variants",
+					 h4("Variants associated with clinical consequences:"),
+					 DT::dataTableOutput("cvtable")),
 			tabPanel(value = "raw", "Browse raw data",
 					 h4("Full table:"),
 					 DT::dataTableOutput("rawdata"))
@@ -104,16 +107,20 @@ server <- function(input, output) {
 	selected = reactiveValues(current=data.frame())
 	
 	observeEvent(input$loadButton, {
-		# read data
+		# read clinvar data and filter GRSs
+		cvfile = paste0("clinvar_", input$id, ".tsv")
+		vcf$cv = read.table(cvfile, comment.char="", h=T, sep="\t", quote="")
 		vcf$grs = filter(grs, id==input$id)
 
 		# merge with ukbb summaries
 		if(input$refselection=="UKBB"){
 			ukbbSum$GRSmean = ukbbSum$GRSmeanU
 			ukbbSum$GRSsd = ukbbSum$GRSsdU
+			vcf$cv$maf = vcf$cv$af
 		} else {
 			ukbbSum$GRSmean = ukbbSum$GRSmeanH
 			ukbbSum$GRSsd = ukbbSum$GRSsdH
+			vcf$cv$maf = vcf$cv$AF_GLOBAL
 		}
 		vcf$grs = left_join(vcf$grs, ukbbSum, by="pheno")
 		vcf$grs = mutate(vcf$grs, myQ = pnorm(GRS, GRSmean, GRSsd),
@@ -171,8 +178,10 @@ server <- function(input, output) {
 			selphenos = vcf$filteredcat$pheno[input$filteredcat_rows_selected]
 		} else if(input$navpanel=="br"){
 			selphenos = vcf$brushed$pheno[input$brushed_rows_selected]
-		} else {
+		} else if(input$navpanel=="raw"){
 			selphenos = vcf$h2$pheno[input$rawdata_rows_selected]
+		} else {
+			selphenos = c()
 		}
 		selected$current = filter(vcf$h2, pheno %in% selphenos)
 
@@ -204,6 +213,8 @@ server <- function(input, output) {
 	})
 	
 	output$sortedbyh <- DT::renderDataTable({
+		if(is.null(vcf$sortedbyh)) return(data.frame())
+		
 		vcf$sortedbyh[,c("pheno", "Description", "h2", "myQ", "myZ")] %>%
 			datatable(rownames=F, selection="single", options=DTopts) %>%
 			formatRound(c("h2", "myQ", "myZ"), digits=3)
@@ -227,6 +238,16 @@ server <- function(input, output) {
 		paste("<br />Selected<font color=\"6CA5CC\" size=\"3\"><b>", selcat$numDiagnoses,
 			  "</b></font> diagnoses in category <font color=\"6CA5CC\" size=\"3\">",
 			  selcat$categories, "</font><br/>Description:", selcat$definition, "<br />")
+	})
+	
+	output$cvtable <- DT::renderDataTable({
+		if(is.null(vcf$cv)) return(data.frame())
+		
+		vcf$cv[,c("rsHRC", "ALT", "gt", "maf", "GeneSymbol", "ClinicalSignificance",
+				  "PhenotypeList", "TestedInGTR")] %>%
+			datatable(rownames=F, selection="single",
+				options = list(pageLength=15, dom="ftp", searching=T, ordering=T)) %>%
+			formatSignif("maf", 2)
 	})
 	
 	output$rawdata <- DT::renderDataTable({
