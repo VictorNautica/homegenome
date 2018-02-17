@@ -71,16 +71,30 @@ write.table(ukbbSum, "ukbb_summarizedgrs.tsv", col.names=T, row.names=F, quote=F
 cv = read.table("clinvarsummary.txt", h=T, sep="\t", quote="", comment.char = "")
 cv = filter(cv, Chromosome %in% 1:22)
 cv$Chromosome = as.numeric(cv$Chromosome)
+cv$PhenotypeList = gsub("not specified[;]*", "", cv$PhenotypeList)
+cv$PhenotypeList = gsub("not provided[;]*", "", cv$PhenotypeList)
 cv = filter(cv, ReferenceAllele %in% c("A", "C", "G", "T"),
 			AlternateAllele %in% c("A", "C", "G", "T")) %>%
 	filter(Assembly=="GRCh37") %>%
-	filter(PhenotypeList!="not specified", PhenotypeList!="not provided",
-		   PhenotypeList!="not provided;not specified")
+	filter(PhenotypeList!="")
+
 # remove variants of no interesting consequences
-cv = filter(cv, ClinicalSignificance!="Uncertain significance",
-			!ClinicalSignificance %in% c("-", "not provided", "other"),
-			!grepl("^Benign", ClinicalSignificance),
-			!grepl("^Likely benign", ClinicalSignificance))
+cv = rename(cv, Clinical = ClinicalSignificance, Gene = GeneSymbol) %>%
+	filter(Clinical != "Uncertain significance",
+			!Clinical %in% c("-", "not provided", "other"),
+			!grepl("^Benign", Clinical),
+			!grepl("^Likely benign", Clinical))
+
+# rename categories
+cv$Clinical[grepl("^Conflicting", cv$Clinical)] = "unclear"
+cv$Clinical[grepl("^Uncertain", cv$Clinical)] = "unclear"
+cv$Clinical[grepl("protective", cv$Clinical)] = "protective"
+cv$Clinical[grepl("^Pathogenic", cv$Clinical)] = "pathogenic"
+cv$Clinical[grepl("^Likely pathogenic", cv$Clinical)] = "pathogenic"
+cv$Clinical[grepl("^Affects", cv$Clinical)] = "association"
+cv$Clinical[grepl("^drug", cv$Clinical)] = "drug response"
+cv$Clinical[grepl("^risk", cv$Clinical)] = "association"
+cv$Clinical[grepl("^association", cv$Clinical)] = "association"
 
 ### PREP INDIVIDUAL FILES
 # find available vcfs
@@ -105,9 +119,14 @@ for(i in 1:nrow(files)){
 	vcfc = select(vcfc, -one_of(c("Type", "LastEvaluated", "nsv.esv..dbVar.", "Assembly",
 				"Cytogenetic", "NumberSubmitters", "Guidelines", "SubmitterCategories",
 				"RCVaccession", "ChromosomeAccession", "Stop")))
+	vcfc = mutate(vcfc, Name = sapply(strsplit(Name, ":"), "[[", 2)) %>%
+		mutate(Name = substring(Name, 3))
+	
 	# drop frequent genotypes
 	vcfc = left_join(vcfc, afs, by=c("CHR", "POS", "REF", "ALT")) %>%
-		filter(!(gt=="0|0" & AF_GLOBAL<0.1) & !(gt=="1|1" & AF_GLOBAL>0.9))
+		mutate(pU = dbinom(round(ds), 2, af), pH = dbinom(round(ds), 2, AF_GLOBAL)) %>%
+		filter(pU < 0.9 | pH < 0.9)
+		
 	write.table(vcfc, paste0("clinvar_", i, ".tsv"), quote=F, row.names=F, col.names=T, sep="\t")
 	
 	# merge with summaries and get GRSs

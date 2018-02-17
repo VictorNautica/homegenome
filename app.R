@@ -78,6 +78,7 @@ ui <- fluidPage(
 					 DT::dataTableOutput("brushed")),
 			tabPanel(value = "cv", "Clinical variants",
 					 h4("Variants associated with clinical consequences:"),
+					 htmlOutput("cvtext"),
 					 DT::dataTableOutput("cvtable")),
 			tabPanel(value = "raw", "Browse raw data",
 					 h4("Full table:"),
@@ -104,7 +105,7 @@ ui <- fluidPage(
 server <- function(input, output) {
 	vcf = reactiveValues()
 	selphenos = NULL
-	selected = reactiveValues(current=data.frame())
+	selected = reactiveValues(current=data.frame(), selcv=data.frame())
 	
 	observeEvent(input$loadButton, {
 		# read clinvar data and filter GRSs
@@ -117,11 +118,19 @@ server <- function(input, output) {
 			ukbbSum$GRSmean = ukbbSum$GRSmeanU
 			ukbbSum$GRSsd = ukbbSum$GRSsdU
 			vcf$cv$maf = vcf$cv$af
+			vcf$cv$L = vcf$cv$pU
 		} else {
 			ukbbSum$GRSmean = ukbbSum$GRSmeanH
 			ukbbSum$GRSsd = ukbbSum$GRSsdH
 			vcf$cv$maf = vcf$cv$AF_GLOBAL
+			vcf$cv$L = vcf$cv$pH
 		}
+		# categorize likelihood for simple presentation
+		vcf$cv = arrange(vcf$cv, L) %>%
+				 mutate(LCat = cut(L, c(0, 0.01, 0.05, 0.3, 1),
+								include.lowest = T,
+								labels = c("very rare", "rare", "unusual", "usual")))
+
 		vcf$grs = left_join(vcf$grs, ukbbSum, by="pheno")
 		vcf$grs = mutate(vcf$grs, myQ = pnorm(GRS, GRSmean, GRSsd),
 						 myZ = (GRS-GRSmean)/GRSsd)
@@ -170,6 +179,7 @@ server <- function(input, output) {
 	output$grsScatter <- renderPlot({
 		if(is.null(vcf$h2)) return(ggplot())
 		
+		# this is for row selection in tables
 		if(input$navpanel=="z"){
 			selphenos = vcf$sortedbyz$pheno[input$sortedbyz_rows_selected]
 		} else if(input$navpanel=="h"){
@@ -180,6 +190,9 @@ server <- function(input, output) {
 			selphenos = vcf$brushed$pheno[input$brushed_rows_selected]
 		} else if(input$navpanel=="raw"){
 			selphenos = vcf$h2$pheno[input$rawdata_rows_selected]
+		} else if(input$navpanel=="cv"){
+			selhrc = vcf$cv$rsHRC[input$cvtable_rows_selected]
+			selected$selcv = filter(vcf$cv, rsHRC %in% selhrc)
 		} else {
 			selphenos = c()
 		}
@@ -243,11 +256,26 @@ server <- function(input, output) {
 	output$cvtable <- DT::renderDataTable({
 		if(is.null(vcf$cv)) return(data.frame())
 		
-		vcf$cv[,c("rsHRC", "ALT", "gt", "maf", "GeneSymbol", "ClinicalSignificance",
-				  "PhenotypeList", "TestedInGTR")] %>%
+		vcf$cv[,c("Gene", "Name", "L", "gt", "maf",
+				  "Clinical", "PhenotypeList")] %>%
 			datatable(rownames=F, selection="single",
-				options = list(pageLength=15, dom="ftp", searching=T, ordering=T)) %>%
-			formatSignif("maf", 2)
+				options = list(pageLength=10, dom="ftp", searching=T, ordering=T)) %>%
+			formatSignif(c("maf", "L"), 2)
+	})
+	
+	output$cvtext <- renderText({
+		sc = selected$selcv
+		
+		if(nrow(sc)){
+			t1 = paste("You have<font color=\"6CA5CC\"><b>", round(sc$ds),
+					   "</b></font>copies of allele", sc$ALT, "in variant", sc$rsHRC)
+			t2 = paste("This is<font color=\"6CA5CC\"><b>", sc$LCat,
+					   "</b></font> - <font color=\"6CA5CC\"><b>", signif(sc$L*100, 2),
+					   "%</b></font> of people have this genotype.")
+			t3 = paste("It affects the following phenotypes:<br /><font color=\"6CA5CC\">",
+					   sc$PhenotypeList)
+			paste(t1, t2, t3, sep="<br />")
+		}
 	})
 	
 	output$rawdata <- DT::renderDataTable({
