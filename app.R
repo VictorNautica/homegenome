@@ -5,6 +5,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(DT)
+library(sodium)
 
 setwd("/srv/shiny-server/homegenome/")
 
@@ -32,6 +33,7 @@ ukbbSum$Description[grepl("cd", ukbbSum$Categories)] = paste("Cause of death:",
 DTopts = list(pageLength=10, dom="tp", searching=F, ordering=F)
 h2opts = list("Observed scale h2"="o", "Liability scale h2"="l", "-log10 P(observed h2>0)"="p")
 
+
 ui <- fluidPage(
 	tags$head(
 		tags$style(HTML("hr {border-top: 1px solid #26386C;}
@@ -41,7 +43,8 @@ ui <- fluidPage(
 	titlePanel("Home Genome"),
 	
 	h3("Identify yourself"),
-	fluidRow(column(4, selectInput("id", "Sample ID:", 1:3)),
+	fluidRow(column(2, uiOutput("idSelector")),
+			 column(3, passwordInput("ppp", "Password:")),
 			 column(2, br(), actionButton("advancedButton", "Advanced settings >>")),
 			 column(2, br(), actionButton("loadButton", "Load sample"))),
 	
@@ -107,11 +110,38 @@ server <- function(input, output) {
 	selphenos = NULL
 	selected = reactiveValues(current=data.frame(), selcv=data.frame())
 	
+	## read user-pass table
+	passt = readLines("pt.txt")
+	passt = data.frame(id=passt[seq(1, length(passt), 2)],
+					   pass=passt[seq(2, length(passt), 2)])
+	output$idSelector <- renderUI({
+		selectInput("id", "Sample ID:", passt$id)
+	})
+	
+	## loading 
+	
 	observeEvent(input$loadButton, {
-		# read clinvar data and filter GRSs
-		cvfile = paste0("clinvar_", input$id, ".tsv")
-		vcf$cv = read.table(cvfile, comment.char="", h=T, sep="\t", quote="")
-		vcf$grs = filter(grs, id==input$id)
+		# check user-pass
+		if(!password_verify(passt$pass[passt$id==input$id], input$ppp)){
+			print(sprintf("failed to verify password for user %s\n", input$id))
+			showNotification("Incorrect password")
+			stop()
+		}
+		
+		# read and decrypt personal input (clinvar and GRSs)
+		cv_enc = readRDS(paste0("cv_", input$id, ".dat"))
+		cv_dec = data_decrypt(cv_enc, hash(charToRaw(input$ppp)))
+		cv_dec = rawToChar(cv_dec[cv_dec>0])
+		cv_dec = textConnection(cv_dec, "r")
+		vcf$cv = read.table(cv_dec, comment.char="", h=T, sep="\t", quote="")
+		
+		grs_enc = readRDS(paste0("grs_", input$id, ".dat"))
+		grs_dec = data_decrypt(grs_enc, hash(charToRaw(input$ppp)))
+		grs_dec = rawToChar(grs_dec[grs_dec>0])
+		grs_dec = textConnection(grs_dec, "r")
+		vcf$grs = read.table(grs_dec, comment.char="", h=T, sep="\t", quote="")
+		rm(cv_enc, cv_dec, grs_enc, grs_dec)
+		
 
 		# merge with ukbb summaries
 		if(input$refselection=="UKBB"){
@@ -163,6 +193,7 @@ server <- function(input, output) {
 		vcf$filteredcat = vcf$sortedbyz
 	})
 	
+	
 	## top plots
 	
 	output$grsHist <- renderPlot({
@@ -204,6 +235,7 @@ server <- function(input, output) {
 			scale_color_manual(values=c("darkblue", "grey50"), guide="none") +
 			xlab("my Z score") + ylab("phenotype h2") + theme_bw()
 	})
+	
 	
 	## middle tabsets
 	
@@ -286,6 +318,7 @@ server <- function(input, output) {
 						   "prevelence", "h2_observed", "h2_observed_se",
 						   "h2_liability", "h2_liability_se", "h2_p"), digits=3)
 	})
+	
 	
 	## bottom panel
 	
