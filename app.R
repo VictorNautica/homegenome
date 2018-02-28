@@ -14,7 +14,6 @@ ukbbSum = read.table("ukbb_summarizedgrs.tsv", h=T, sep="\t", quote='')
 h2 = read.table("ukbb_all_h2univar_results.txt", h=T, sep="\t", quote="")
 h2 = h2[,-c(2, 7:14, 19)]
 notes = read.table("phenosummary_final_11898_18597.tsv", h=T, sep="\t", quote="")
-grs = read.table("grs_everyone.tsv", h=T)
 
 vcf = reactiveValues(raw = NULL)
 
@@ -129,13 +128,13 @@ server <- function(input, output) {
 		}
 		
 		# read and decrypt personal input (clinvar and GRSs)
-		cv_enc = readRDS(paste0("cv_", input$id, ".dat"))
+		cv_enc = readRDS(paste0("grs/cv_", input$id, ".dat"))
 		cv_dec = data_decrypt(cv_enc, hash(charToRaw(input$ppp)))
 		cv_dec = rawToChar(cv_dec[cv_dec>0])
 		cv_dec = textConnection(cv_dec, "r")
 		vcf$cv = read.table(cv_dec, comment.char="", h=T, sep="\t", quote="")
 		
-		grs_enc = readRDS(paste0("grs_", input$id, ".dat"))
+		grs_enc = readRDS(paste0("grs/grs_", input$id, ".dat"))
 		grs_dec = data_decrypt(grs_enc, hash(charToRaw(input$ppp)))
 		grs_dec = rawToChar(grs_dec[grs_dec>0])
 		grs_dec = textConnection(grs_dec, "r")
