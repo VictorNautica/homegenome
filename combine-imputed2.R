@@ -105,6 +105,7 @@ saveRDS(vcfc_enc, fileCV)
 saveRDS(vcf_enc, fileGRS)
 
 # copy both output files to server directory
+dirsrv = paste0(dirsrv, "grs/")
 system(paste("cp", fileCV, dirsrv))
 system(paste("cp", fileGRS, dirsrv))
 system(paste0("chgrp shiny ", dirsrv, fileCV))
